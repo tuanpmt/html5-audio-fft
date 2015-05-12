@@ -131,7 +131,7 @@
      function magnitude(complex) {
         var mag = [];
         for(var i=0; i<complex.length/2; i++) {
-          mag.push(complex[i].re * complex[i].re + complex[i].im * complex[i].im)
+          mag.push(Math.sqrt(complex[i].re * complex[i].re + complex[i].im * complex[i].im));
         }
         return mag;
      }
@@ -225,7 +225,7 @@
       data.forEach(function(c_value, i) {
         context.lineTo(
           i * width / n,
-          height/2 * (1.9 - c_value/30)
+          height/2 * (1.9 - c_value)
         );
       })
       context.stroke();
