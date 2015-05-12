@@ -201,29 +201,34 @@
     }
 
     getData("Let's Go (Original Mix).ogg");
-   
+    drawText('channel1', 'Loading...');
+    drawText('channel2', 'Loading...')
     
-    
+    function drawText(element_id, text) {
+      var ctx = document.getElementById(element_id).getContext('2d');
+      ctx.font = "48px serif";
+      ctx.fillText(text, 10, 50);
+    }
     function draw(element_id, data) {
       var
         canvas = document.getElementById(element_id),
         context = canvas.getContext('2d'),
         width = canvas.width,
         height = canvas.height,
-        n = data.length/2
+        n = data.length/2;
 
       
       
       context.clearRect(0, 0, canvas.width, canvas.height);
-      context.strokeStyle = 'blue'
-      context.beginPath()
+      context.strokeStyle = 'blue';
+      context.beginPath();
       data.forEach(function(c_value, i) {
         context.lineTo(
           i * width / n,
           height/2 * (1.9 - c_value/30)
-        )
+        );
       })
-      context.stroke()
+      context.stroke();
     }
 
       
