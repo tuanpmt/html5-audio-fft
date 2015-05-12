@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  
+  <title>HTM5 Audio FFT</title>
+</head>
+<body>
+
+ 
+  <canvas id="channel0" width="600" height="400" style="background:lightgray"></canvas>
+  
+  <canvas id="channel1" width="600" height="400" style="background:lightgray"></canvas>
+
+  
+  <script>
+    /*
+    basic complex number arithmetic from 
+    http://rosettacode.org/wiki/Fast_Fourier_transform#Scala
+    */
+    function Complex(re, im) 
+    {
+      this.re = re;
+      this.im = im || 0.0;
+    }
+    Complex.prototype.add = function(other, dst)
+    {
+      dst.re = this.re + other.re;
+      dst.im = this.im + other.im;
+      return dst;
+    }
+    Complex.prototype.sub = function(other, dst)
+    {
+      dst.re = this.re - other.re;
+      dst.im = this.im - other.im;
+      return dst;
+    }
+    Complex.prototype.mul = function(other, dst)
+    {
+      //cache re in case dst === this
+      var r = this.re * other.re - this.im * other.im;
+      dst.im = this.re * other.im + this.im * other.re;
+      dst.re = r;
+      return dst;
+    }
+    Complex.prototype.cexp = function(dst)
+    {
+      var er = Math.exp(this.re);
+      dst.re = er * Math.cos(this.im);
+      dst.im = er * Math.sin(this.im);
+      return dst;
+    }
+    Complex.prototype.log = function()
+    {
+      /*
+      although 'It's just a matter of separating out the real and imaginary parts of jw.' is not a helpful quote
+      the actual formula I found here and the rest was just fiddling / testing and comparing with correct results.
+      http://cboard.cprogramming.com/c-programming/89116-how-implement-complex-exponential-functions-c.html#post637921
+      */
+      if( !this.re )
+        console.log(this.im.toString()+'j');
+      else if( this.im < 0 )
+        console.log(this.re.toString()+this.im.toString()+'j');
+      else
+        console.log(this.re.toString()+'+'+this.im.toString()+'j');
+    }
+  
+    /*
+    complex fast fourier transform and inverse from
+    http://rosettacode.org/wiki/Fast_Fourier_transform#C.2B.2B
+    */
+    function icfft(amplitudes)
+    {
+      var N = amplitudes.length;
+      var iN = 1 / N;
+     
+      //conjugate if imaginary part is not 0
+      for(var i = 0 ; i < N; ++i)
+        if(amplitudes[i] instanceof Complex)
+          amplitudes[i].im = -amplitudes[i].im;
+     
+      //apply fourier transform
+      amplitudes = cfft(amplitudes)
+     
+      for(var i = 0 ; i < N; ++i)
+      {
+        //conjugate again
+        amplitudes[i].im = -amplitudes[i].im;
+        //scale
+        amplitudes[i].re *= iN;
+        amplitudes[i].im *= iN;
+      }
+      return amplitudes;
+    }
+     
+    function cfft(amplitudes)
+    {
+      var N = amplitudes.length;
+      if( N <= 1 )
+        return amplitudes;
+     
+      var hN = N / 2;
+      var even = [];
+      var odd = [];
+      even.length = hN;
+      odd.length = hN;
+      for(var i = 0; i < hN; ++i)
+      {
+        even[i] = amplitudes[i*2];
+        odd[i] = amplitudes[i*2+1];
+      }
+      even = cfft(even);
+      odd = cfft(odd);
+     
+      var a = -2*Math.PI;
+      for(var k = 0; k < hN; ++k)
+      {
+        if(!(even[k] instanceof Complex))
+          even[k] = new Complex(even[k], 0);
+        if(!(odd[k] instanceof Complex))
+          odd[k] = new Complex(odd[k], 0);
+        var p = k/N;
+        var t = new Complex(0, a * p);
+        t.cexp(t).mul(odd[k], t);
+        amplitudes[k] = even[k].add(t, odd[k]);
+        amplitudes[k + hN] = even[k].sub(t, even[k]);
+      }
+      return amplitudes;
+    }
+     
+     function magnitude(complex) {
+        var mag = [];
+        for(var i=0; i<complex.length/2; i++) {
+          mag.push(complex[i].re * complex[i].re + complex[i].im * complex[i].im)
+        }
+        return mag;
+     }
+   
+    var SAMPLE = 256;
+
+    var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    var source = audioCtx.createBufferSource();
+    // Create a ScriptProcessorNode with a bufferSize of 4096 and a single input and output channel
+    var scriptNode = audioCtx.createScriptProcessor(SAMPLE, 1, 1);
+
+    function getData(url) {
+      
+      request = new XMLHttpRequest();
+
+      request.open('GET', url, true);
+
+      request.responseType = 'arraybuffer';
+
+
+      request.onload = function() {
+        var audioData = request.response;
+
+        audioCtx.decodeAudioData(audioData, function(buffer) {
+            source.buffer = buffer;
+            source.connect(scriptNode);
+            scriptNode.connect(audioCtx.destination);
+            source.start();
+            
+          },
+
+          function(e){"Error with decoding audio data" + e.err});
+
+      }
+
+      request.send();
+    }
+
+    // Give the node a function to process audio events
+    scriptNode.onaudioprocess = function(audioProcessingEvent) {
+
+      // The input buffer is the song we loaded earlier
+      var inputBuffer = audioProcessingEvent.inputBuffer;
+
+      // The output buffer contains the samples that will be modified and played
+      var outputBuffer = audioProcessingEvent.outputBuffer;
+
+      // Loop through the output channels (in this case there is only one)
+      for (var channel = 0; channel < outputBuffer.numberOfChannels; channel++) {
+        var inputData = inputBuffer.getChannelData(channel);
+        var outputData = outputBuffer.getChannelData(channel);
+        var arr = [];
+        for(var i=0; i< SAMPLE; i++){
+          outputData[i] = inputData[i];
+          arr.push(inputData[i]);
+        }
+        
+        draw('channel'+channel, magnitude(cfft(arr)));
+        
+      }
+    }
+
+    // When the buffer source stops playing, disconnect everything
+    source.onended = function() {
+      source.disconnect(scriptNode);
+      scriptNode.disconnect(audioCtx.destination);
+    }
+
+    getData("Let's Go (Original Mix).ogg");
+   
+    
+    
+    function draw(element_id, data) {
+      var
+        canvas = document.getElementById(element_id),
+        context = canvas.getContext('2d'),
+        width = canvas.width,
+        height = canvas.height,
+        n = data.length/2
+
+      
+      
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.strokeStyle = 'blue'
+      context.beginPath()
+      data.forEach(function(c_value, i) {
+        context.lineTo(
+          i * width / n,
+          height/2 * (1.9 - c_value/30)
+        )
+      })
+      context.stroke()
+    }
+
+      
+  </script>
+</body>
+</html>
